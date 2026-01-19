@@ -1,0 +1,42 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f9f9f9;
+}
+
+/* Tabela */
+.tx-table-row:hover {
+  background-color: #fafafa;
+  transition: background-color 0.2s ease;
+}
+
+.tx-table-row {
+  border-bottom: 1px solid #ddd;
+}
+
+.tx-table-row td {
+  border: 1px solid #ddd;
+  padding: 12px;
+}
+
+/* Status badges */
+.status-income {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.status-expense {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #ffebee;
+  color: #c62828;
+  font-weight: 500;
+}

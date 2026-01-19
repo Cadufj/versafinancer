@@ -1,0 +1,340 @@
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Upload, Download, FileText, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { format } from "date-fns";
+
+const categoryMap = {
+  // Entradas
+  "vendas a vista": "Vendas à Vista",
+  "vendas à vista": "Vendas à Vista",
+  "vendas parceladas": "Vendas Parceladas",
+  "vendas online": "Vendas Online",
+  "atacado": "Atacado",
+  "consignacao": "Consignação",
+  "consignação": "Consignação",
+  // Saídas
+  "fornecedores": "Fornecedores",
+  "aluguel": "Aluguel",
+  "funcionarios": "Funcionários",
+  "funcionários": "Funcionários",
+  "energia": "Energia",
+  "agua": "Água",
+  "água": "Água",
+  "internet/telefone": "Internet/Telefone",
+  "internet": "Internet/Telefone",
+  "telefone": "Internet/Telefone",
+  "marketing": "Marketing",
+  "impostos": "Impostos",
+  "manutencao": "Manutenção",
+  "manutenção": "Manutenção",
+  "material de escritorio": "Material de Escritório",
+  "material de escritório": "Material de Escritório",
+  "transporte/frete": "Transporte/Frete",
+  "transporte": "Transporte/Frete",
+  "frete": "Transporte/Frete",
+  "outros": "Outros",
+  "outros gastos": "Outros"
+};
+
+const sourceMap = {
+  "dinheiro": "dinheiro",
+  "pix": "pix",
+  "cartao credito": "cartao_credito",
+  "cartão credito": "cartao_credito",
+  "cartao de credito": "cartao_credito",
+  "cartão de crédito": "cartao_credito",
+  "credito": "cartao_credito",
+  "crédito": "cartao_credito",
+  "cartao debito": "cartao_debito",
+  "cartão debito": "cartao_debito",
+  "cartao de debito": "cartao_debito",
+  "cartão de débito": "cartao_debito",
+  "debito": "cartao_debito",
+  "débito": "cartao_debito",
+  "transferencia": "transferencia",
+  "transferência": "transferencia",
+  "boleto": "boleto"
+};
+
+function parseDate(dateStr) {
+  // Tenta diferentes formatos de data
+  const formats = [
+    /^(\d{2})\/(\d{2})\/(\d{4})$/, // DD/MM/YYYY
+    /^(\d{2})-(\d{2})-(\d{4})$/, // DD-MM-YYYY
+    /^(\d{4})-(\d{2})-(\d{2})$/, // YYYY-MM-DD
+  ];
+
+  for (const regex of formats) {
+    const match = dateStr.match(regex);
+    if (match) {
+      if (regex === formats[2]) {
+        // YYYY-MM-DD
+        return `${match[1]}-${match[2]}-${match[3]}`;
+      } else {
+        // DD/MM/YYYY ou DD-MM-YYYY
+        return `${match[3]}-${match[2]}-${match[1]}`;
+      }
+    }
+  }
+  return null;
+}
+
+function parseType(typeStr) {
+  const lower = typeStr.toLowerCase().trim();
+  if (lower === "entrada" || lower === "receita" || lower === "credito" || lower === "crédito") {
+    return "entrada";
+  }
+  if (lower === "saida" || lower === "saída" || lower === "despesa" || lower === "debito" || lower === "débito") {
+    return "saida";
+  }
+  return null;
+}
+
+function parseAmount(amountStr) {
+  // Remove R$, espaços e converte vírgula para ponto
+  const cleaned = amountStr.replace(/[R$\s]/g, '').replace(',', '.');
+  const value = parseFloat(cleaned);
+  return isNaN(value) ? null : Math.abs(value);
+}
+
+function normalizeCategory(categoryStr) {
+  const lower = categoryStr.toLowerCase().trim();
+  return categoryMap[lower] || categoryStr;
+}
+
+function normalizeSource(sourceStr) {
+  if (!sourceStr) return "pix"; // Default
+  const lower = sourceStr.toLowerCase().trim();
+  return sourceMap[lower] || "pix";
+}
+
+export default function ImportExportModal({ open, onOpenChange, transactions, onImport }) {
+  const [activeTab, setActiveTab] = useState("import");
+  const [importText, setImportText] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleImport = async () => {
+    setIsProcessing(true);
+    setResult(null);
+
+    const lines = importText.trim().split('\n').filter(line => line.trim());
+    
+    // Verifica se a primeira linha é um cabeçalho
+    const firstLine = lines[0].toLowerCase();
+    const hasHeader = firstLine.includes('data') || firstLine.includes('tipo') || firstLine.includes('valor');
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    const parsed = [];
+    const errors = [];
+
+    dataLines.forEach((line, index) => {
+      const lineNum = hasHeader ? index + 2 : index + 1;
+      
+      // Divide por vírgula, mas preserva vírgulas dentro de aspas
+      const parts = line.split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
+      
+      if (parts.length < 5) {
+        errors.push(`Linha ${lineNum}: formato inválido (esperado: Data,Tipo,Descrição,Categoria,Valor)`);
+        return;
+      }
+
+      const [dateStr, typeStr, description, category, amountStr, sourceStr] = parts;
+
+      const date = parseDate(dateStr);
+      if (!date) {
+        errors.push(`Linha ${lineNum}: data inválida "${dateStr}"`);
+        return;
+      }
+
+      const type = parseType(typeStr);
+      if (!type) {
+        errors.push(`Linha ${lineNum}: tipo inválido "${typeStr}" (use: entrada, saída, receita ou despesa)`);
+        return;
+      }
+
+      const amount = parseAmount(amountStr);
+      if (!amount) {
+        errors.push(`Linha ${lineNum}: valor inválido "${amountStr}"`);
+        return;
+      }
+
+      parsed.push({
+        date,
+        type,
+        description: description || normalizeCategory(category),
+        category: normalizeCategory(category),
+        amount,
+        source: normalizeSource(sourceStr)
+      });
+    });
+
+    if (parsed.length > 0) {
+      await onImport(parsed);
+    }
+
+    setResult({
+      success: parsed.length,
+      errors
+    });
+    setIsProcessing(false);
+  };
+
+  const handleExport = () => {
+    const header = "Data,Tipo,Descrição,Categoria,Valor,Forma de Pagamento";
+    const rows = transactions.map(t => {
+      const date = format(new Date(t.date), 'dd/MM/yyyy');
+      const type = t.type === "entrada" ? "Receita" : "Despesa";
+      const description = t.description || t.category;
+      const amount = t.amount.toFixed(2).replace('.', ',');
+      const source = {
+        dinheiro: "Dinheiro",
+        pix: "PIX",
+        cartao_credito: "Cartão de Crédito",
+        cartao_debito: "Cartão de Débito",
+        transferencia: "Transferência",
+        boleto: "Boleto"
+      }[t.source] || t.source;
+      
+      return `${date},${type},${description},${t.category},${amount},${source}`;
+    });
+
+    const csv = [header, ...rows].join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `transacoes_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.click();
+  };
+
+  const handleClose = () => {
+    setImportText("");
+    setResult(null);
+    onOpenChange(false);
+  };
+
+  const exampleText = `Data,Tipo,Descrição,Categoria,Valor
+08/01/2026,despesa,Pedidos dry fit,Outros,1250
+08/01/2026,receita,Vendas do dia,Vendas à Vista,3500
+09/01/2026,despesa,Conta de luz,Energia,450`;
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-slate-800">
+            Importar / Exportar Transações
+          </DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="import" className="flex items-center gap-2">
+              <Upload className="w-4 h-4" />
+              Importar
+            </TabsTrigger>
+            <TabsTrigger value="export" className="flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Exportar
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="import" className="space-y-4 mt-4">
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <div className="flex items-start gap-3">
+                <FileText className="w-5 h-5 text-slate-500 mt-0.5" />
+                <div className="text-sm text-slate-600">
+                  <p className="font-medium text-slate-700 mb-1">Formato esperado:</p>
+                  <code className="text-xs bg-slate-200 px-2 py-1 rounded block mb-2">
+                    Data,Tipo,Descrição,Categoria,Valor
+                  </code>
+                  <p className="text-xs text-slate-500 mb-2">
+                    • <strong>Data:</strong> DD/MM/YYYY ou YYYY-MM-DD<br/>
+                    • <strong>Tipo:</strong> receita, despesa, entrada ou saída<br/>
+                    • <strong>Categoria:</strong> Vendas à Vista, Fornecedores, Aluguel, etc.<br/>
+                    • <strong>Valor:</strong> número (ex: 1250 ou 1250,00)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                Cole seus dados aqui (uma transação por linha):
+              </label>
+              <Textarea
+                placeholder={exampleText}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                className="min-h-[200px] font-mono text-sm"
+              />
+            </div>
+
+            {result && (
+              <div className={`rounded-xl p-4 ${result.errors.length > 0 && result.success === 0 ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                {result.success > 0 && (
+                  <div className="flex items-center gap-2 text-emerald-700 mb-2">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="font-medium">{result.success} transações importadas com sucesso!</span>
+                  </div>
+                )}
+                {result.errors.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-rose-700">
+                      <AlertCircle className="w-5 h-5" />
+                      <span className="font-medium">{result.errors.length} erro(s) encontrado(s):</span>
+                    </div>
+                    <ul className="text-sm text-rose-600 list-disc list-inside ml-7">
+                      {result.errors.slice(0, 5).map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                      {result.errors.length > 5 && (
+                        <li>... e mais {result.errors.length - 5} erro(s)</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Button 
+              onClick={handleImport} 
+              disabled={!importText.trim() || isProcessing}
+              className="w-full bg-slate-900 hover:bg-slate-800"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Importar Transações
+                </>
+              )}
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="export" className="space-y-4 mt-4">
+            <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 text-center">
+              <Download className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+              <h3 className="font-semibold text-slate-800 mb-2">Exportar todas as transações</h3>
+              <p className="text-sm text-slate-500 mb-4">
+                Será gerado um arquivo CSV com {transactions.length} transações registradas no sistema.
+              </p>
+              <Button onClick={handleExport} className="bg-emerald-600 hover:bg-emerald-700">
+                <Download className="w-4 h-4 mr-2" />
+                Baixar CSV
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}

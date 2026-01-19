@@ -1,0 +1,339 @@
+import { useState, useMemo } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format, startOfMonth, endOfMonth, subMonths, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { motion } from "framer-motion";
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Wallet, 
+  Plus,
+  Calendar,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  Upload,
+  Download,
+  Users
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import StatCard from "@/components/dashboard/StatCard";
+import MonthlyChart from "@/components/dashboard/MonthlyChart";
+import CategoryChart from "@/components/dashboard/CategoryChart";
+import PaymentMethodChart from "@/components/dashboard/PaymentMethodChart";
+import TransactionList from "@/components/dashboard/TransactionList";
+import TransactionForm from "@/components/dashboard/TransactionForm";
+import ImportExportModal from "@/components/dashboard/ImportExportModal";
+
+export default function Dashboard() {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [filterType, setFilterType] = useState("all");
+  
+  const queryClient = useQueryClient();
+
+  const { data: transactions = [], isLoading } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: () => base44.entities.Transaction.list('-date', 500),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data) => base44.entities.Transaction.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      setIsFormOpen(false);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Transaction.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+
+  const bulkCreateMutation = useMutation({
+    mutationFn: (data) => base44.entities.Transaction.bulkCreate(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+
+  // Filter transactions by selected month
+  const monthStart = startOfMonth(selectedMonth);
+  const monthEnd = endOfMonth(selectedMonth);
+  
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const date = parseISO(t.date);
+      const inMonth = date >= monthStart && date <= monthEnd;
+      const matchesType = filterType === "all" || t.type === filterType;
+      return inMonth && matchesType;
+    });
+  }, [transactions, monthStart, monthEnd, filterType]);
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    const monthTransactions = transactions.filter(t => {
+      const date = parseISO(t.date);
+      return date >= monthStart && date <= monthEnd;
+    });
+
+    const prevMonthStart = startOfMonth(subMonths(selectedMonth, 1));
+    const prevMonthEnd = endOfMonth(subMonths(selectedMonth, 1));
+    const prevMonthTransactions = transactions.filter(t => {
+      const date = parseISO(t.date);
+      return date >= prevMonthStart && date <= prevMonthEnd;
+    });
+
+    const income = monthTransactions.filter(t => t.type === "entrada").reduce((sum, t) => sum + (t.amount || 0), 0);
+    const expenses = monthTransactions.filter(t => t.type === "saida").reduce((sum, t) => sum + (t.amount || 0), 0);
+    const balance = income - expenses;
+
+    const prevIncome = prevMonthTransactions.filter(t => t.type === "entrada").reduce((sum, t) => sum + (t.amount || 0), 0);
+    const prevExpenses = prevMonthTransactions.filter(t => t.type === "saida").reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const incomeChange = prevIncome ? ((income - prevIncome) / prevIncome * 100).toFixed(1) : 0;
+    const expenseChange = prevExpenses ? ((expenses - prevExpenses) / prevExpenses * 100).toFixed(1) : 0;
+
+    return { income, expenses, balance, incomeChange, expenseChange };
+  }, [transactions, monthStart, monthEnd, selectedMonth]);
+
+  // Monthly chart data
+  const monthlyData = useMemo(() => {
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const date = subMonths(new Date(), i);
+      const start = startOfMonth(date);
+      const end = endOfMonth(date);
+      
+      const monthTx = transactions.filter(t => {
+        const txDate = parseISO(t.date);
+        return txDate >= start && txDate <= end;
+      });
+
+      months.push({
+        month: format(date, 'MMM', { locale: ptBR }),
+        entradas: monthTx.filter(t => t.type === "entrada").reduce((sum, t) => sum + (t.amount || 0), 0),
+        saidas: monthTx.filter(t => t.type === "saida").reduce((sum, t) => sum + (t.amount || 0), 0)
+      });
+    }
+    return months;
+  }, [transactions]);
+
+  // Category data for charts
+  const expenseCategories = useMemo(() => {
+    const categories = {};
+    filteredTransactions.filter(t => t.type === "saida").forEach(t => {
+      categories[t.category] = (categories[t.category] || 0) + (t.amount || 0);
+    });
+    const total = Object.values(categories).reduce((a, b) => a + b, 0);
+    return Object.entries(categories)
+      .map(([name, value]) => ({ 
+        name, 
+        value, 
+        percentage: total ? ((value / total) * 100).toFixed(1) : 0 
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const incomeCategories = useMemo(() => {
+    const categories = {};
+    filteredTransactions.filter(t => t.type === "entrada").forEach(t => {
+      categories[t.category] = (categories[t.category] || 0) + (t.amount || 0);
+    });
+    const total = Object.values(categories).reduce((a, b) => a + b, 0);
+    return Object.entries(categories)
+      .map(([name, value]) => ({ 
+        name, 
+        value, 
+        percentage: total ? ((value / total) * 100).toFixed(1) : 0 
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const paymentMethods = useMemo(() => {
+    const methods = {};
+    filteredTransactions.filter(t => t.type === "entrada").forEach(t => {
+      methods[t.source] = (methods[t.source] || 0) + (t.amount || 0);
+    });
+    return Object.entries(methods)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const navigateMonth = (direction) => {
+    setSelectedMonth(prev => direction === 'prev' ? subMonths(prev, 1) : subMonths(prev, -1));
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Dashboard Financeiro</h1>
+              <p className="text-slate-500 text-sm mt-0.5">Controle completo da sua loja</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Month Navigator */}
+              <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <div className="flex items-center gap-2 px-3 py-1.5">
+                  <Calendar className="w-4 h-4 text-slate-500" />
+                  <span className="font-medium text-slate-700 capitalize min-w-[100px] text-center">
+                    {format(selectedMonth, 'MMMM yyyy', { locale: ptBR })}
+                  </span>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <Link to={createPageUrl("Debtors")}>
+                <Button 
+                  variant="outline"
+                  className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Fiado
+                </Button>
+              </Link>
+
+              <Button 
+                variant="outline"
+                onClick={() => setIsImportExportOpen(true)}
+                className="border-slate-300"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Importar/Exportar
+              </Button>
+
+              <Button 
+                onClick={() => setIsFormOpen(true)}
+                className="bg-slate-900 hover:bg-slate-800 text-white"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Transação
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <StatCard
+            title="Entradas"
+            value={`R$ ${stats.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+            icon={TrendingUp}
+            variant="income"
+            trend={stats.incomeChange > 0 ? "up" : "down"}
+            trendValue={`${Math.abs(stats.incomeChange)}%`}
+          />
+          <StatCard
+            title="Saídas"
+            value={`R$ ${stats.expenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+            icon={TrendingDown}
+            variant="expense"
+            trend={stats.expenseChange > 0 ? "up" : "down"}
+            trendValue={`${Math.abs(stats.expenseChange)}%`}
+          />
+          <StatCard
+            title="Saldo do Mês"
+            value={`R$ ${stats.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+            icon={Wallet}
+            variant="balance"
+          />
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <MonthlyChart data={monthlyData} />
+          <div className="grid grid-cols-1 gap-6">
+            <CategoryChart 
+              data={expenseCategories} 
+              title="Onde está indo o dinheiro?"
+              subtitle="Distribuição de gastos por categoria"
+              type="expense"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <CategoryChart 
+            data={incomeCategories} 
+            title="De onde vem o dinheiro?"
+            subtitle="Fontes de receita por categoria"
+            type="income"
+          />
+          <PaymentMethodChart data={paymentMethods} />
+        </div>
+
+        {/* Transactions Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="bg-white rounded-2xl border border-slate-200 p-6"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800">Transações Recentes</h3>
+              <p className="text-sm text-slate-500">
+                {filteredTransactions.length} transações em {format(selectedMonth, 'MMMM', { locale: ptBR })}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="entrada">Entradas</SelectItem>
+                  <SelectItem value="saida">Saídas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <TransactionList 
+            transactions={filteredTransactions}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            isLoading={isLoading}
+          />
+        </motion.div>
+      </main>
+
+      {/* Transaction Form Modal */}
+      <TransactionForm
+        open={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        onSubmit={createMutation.mutateAsync}
+        isSubmitting={createMutation.isPending}
+      />
+
+      {/* Import/Export Modal */}
+      <ImportExportModal
+        open={isImportExportOpen}
+        onOpenChange={setIsImportExportOpen}
+        transactions={transactions}
+        onImport={bulkCreateMutation.mutateAsync}
+      />
+    </div>
+  );
+}

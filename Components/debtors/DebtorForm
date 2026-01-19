@@ -1,0 +1,169 @@
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, UserPlus, Pencil } from "lucide-react";
+
+export default function DebtorForm({ open, onOpenChange, onSubmit, isSubmitting, editingDebtor }) {
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    total_debt: "",
+    description: "",
+    notes: "",
+    status: "pendente",
+    paid_amount: 0
+  });
+
+  useEffect(() => {
+    if (editingDebtor) {
+      setFormData({
+        name: editingDebtor.name || "",
+        phone: editingDebtor.phone || "",
+        total_debt: editingDebtor.total_debt?.toString() || "",
+        description: editingDebtor.description || "",
+        notes: editingDebtor.notes || "",
+        status: editingDebtor.status || "pendente",
+        paid_amount: editingDebtor.paid_amount || 0
+      });
+    } else {
+      setFormData({
+        name: "",
+        phone: "",
+        total_debt: "",
+        description: "",
+        notes: "",
+        status: "pendente",
+        paid_amount: 0
+      });
+    }
+  }, [editingDebtor, open]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    const newTotalDebt = parseFloat(formData.total_debt);
+    let newStatus = formData.status;
+    
+    // Atualiza status baseado no valor pago
+    if (editingDebtor) {
+      if (formData.paid_amount >= newTotalDebt) {
+        newStatus = "pago";
+      } else if (formData.paid_amount > 0) {
+        newStatus = "parcial";
+      } else {
+        newStatus = "pendente";
+      }
+    }
+
+    await onSubmit({
+      ...formData,
+      total_debt: newTotalDebt,
+      paid_amount: parseFloat(formData.paid_amount) || 0,
+      status: newStatus
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            {editingDebtor ? (
+              <>
+                <Pencil className="w-5 h-5" />
+                Editar Fiado
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-5 h-5" />
+                Novo Fiado
+              </>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Nome do Cliente *</Label>
+            <Input
+              id="name"
+              placeholder="Nome completo"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">Número para Contato</Label>
+            <Input
+              id="phone"
+              placeholder="(00) 00000-0000"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="total_debt">Valor *</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">
+                R$
+              </span>
+              <Input
+                id="total_debt"
+                type="number"
+                step="0.01"
+                placeholder="0,00"
+                className="pl-10"
+                value={formData.total_debt}
+                onChange={(e) => setFormData({ ...formData, total_debt: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">O que foi comprado</Label>
+            <Textarea
+              id="description"
+              placeholder="Ex: 2 vestidos, 1 calça jeans, 3 blusas..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Observação</Label>
+            <Textarea
+              id="notes"
+              placeholder="Informações adicionais..."
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={2}
+            />
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-rose-600 hover:bg-rose-700"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              editingDebtor ? "Salvar Alterações" : "Registrar Fiado"
+            )}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

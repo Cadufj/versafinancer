@@ -1,0 +1,63 @@
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+export default function StatCard({ title, value, icon: Icon, trend, trendValue, variant = "default" }) {
+  const variants = {
+    default: "bg-white border-slate-200",
+    income: "bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200",
+    expense: "bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-200",
+    balance: "bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700"
+  };
+
+  const textVariants = {
+    default: "text-slate-900",
+    income: "text-emerald-700",
+    expense: "text-rose-700",
+    balance: "text-white"
+  };
+
+  const iconVariants = {
+    default: "bg-slate-100 text-slate-600",
+    income: "bg-emerald-200/70 text-emerald-700",
+    expense: "bg-rose-200/70 text-rose-700",
+    balance: "bg-white/10 text-white"
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(
+        "rounded-2xl border p-6 transition-all duration-300 hover:shadow-lg",
+        variants[variant]
+      )}
+    >
+      <div className="flex items-start justify-between">
+        <div className="space-y-3">
+          <p className={cn(
+            "text-sm font-medium tracking-wide uppercase",
+            variant === "balance" ? "text-slate-400" : "text-slate-500"
+          )}>
+            {title}
+          </p>
+          <p className={cn("text-3xl font-bold tracking-tight", textVariants[variant])}>
+            {value}
+          </p>
+          {trend && (
+            <div className={cn(
+              "flex items-center gap-1 text-sm font-medium",
+              trend === "up" ? "text-emerald-600" : "text-rose-600"
+            )}>
+              <span>{trend === "up" ? "↑" : "↓"}</span>
+              <span>{trendValue}</span>
+              <span className="text-slate-400 font-normal">vs mês anterior</span>
+            </div>
+          )}
+        </div>
+        <div className={cn("p-3 rounded-xl", iconVariants[variant])}>
+          <Icon className="w-6 h-6" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}

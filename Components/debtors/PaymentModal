@@ -1,0 +1,115 @@
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, DollarSign } from "lucide-react";
+
+export default function PaymentModal({ open, onOpenChange, debtor, onSubmit, isSubmitting }) {
+  const [amount, setAmount] = useState("");
+
+  if (!debtor) return null;
+
+  const remaining = debtor.total_debt - (debtor.paid_amount || 0);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const paymentAmount = parseFloat(amount);
+    const newPaidAmount = (debtor.paid_amount || 0) + paymentAmount;
+    
+    let newStatus = "parcial";
+    if (newPaidAmount >= debtor.total_debt) {
+      newStatus = "pago";
+    }
+
+    await onSubmit(debtor.id, {
+      paid_amount: newPaidAmount,
+      status: newStatus
+    });
+    setAmount("");
+  };
+
+  const handlePayFull = async () => {
+    await onSubmit(debtor.id, {
+      paid_amount: debtor.total_debt,
+      status: "pago"
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-emerald-600" />
+            Registrar Pagamento
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="bg-slate-50 rounded-xl p-4 mb-4">
+          <p className="text-sm text-slate-500">Cliente</p>
+          <p className="font-semibold text-slate-800">{debtor.name}</p>
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            <div>
+              <p className="text-xs text-slate-500">Total</p>
+              <p className="font-semibold text-slate-800">
+                R$ {debtor.total_debt?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Restante</p>
+              <p className="font-semibold text-rose-600">
+                R$ {remaining.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="payment">Valor do Pagamento</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">
+                R$
+              </span>
+              <Input
+                id="payment"
+                type="number"
+                step="0.01"
+                max={remaining}
+                placeholder="0,00"
+                className="pl-10"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={handlePayFull}
+              disabled={isSubmitting}
+            >
+              Pagar Total
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || !amount}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Confirmar"
+              )}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
