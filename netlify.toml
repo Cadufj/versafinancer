@@ -2,15 +2,8 @@
   command = "npm run build"
   publish = ".next/public"
 
-[dev]
-  command = "npm run dev"
-  port = 3000
-  publish = ".next/public"
-
-[[redirects]]
-  from = "/*"
-  to = "/"
-  status = 200
+[[plugins]]
+package = "@netlify/plugin-nextjs"
 
 [env.production]
 NEXT_PUBLIC_FIREBASE_API_KEY = "AIzaSyBWChOAPblo92QjLK7dQUaOfVxzlAKLLrQ"
